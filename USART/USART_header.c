@@ -91,6 +91,8 @@ void send_data(unsigned char c)
 }
 unsigned char receive_data()
 {
+	unsigned char temporary_data;
 	while(!(UCSRA&(1<<RXC))); //Flag is set when there are unread data in the UDR register , else the flag is cleared
-	return UDR;
+	temporary_data = UDR;
+	return temporary_data;
 }
