@@ -42,13 +42,15 @@ Breath and wake are configured as default 2seconds and 32ms respectively*/
 //This illustrative code is written for Node side module only 
 */
 
+//Standard mode :- Mode in which the configurations of the module need to be done 
+//Network mode  :- Mode in which actual communication between the two modules takes place 
 
 /* ------------------------------MACROS------------------------------------------------------------*/
 
 #define F_CPU			  11059200
-#define ENABLE            PB1
-#define SET               PB0
-#define AUX				  PB2 
+#define ENABLE            PB1         //Enable pin , to be kept low whether in standard mode or network mode 
+#define SET               PB0         //Enable and set both High in breath , both low in express , set high and enable low in standard
+#define AUX				  PB2         //The interrupt pin from the DRF to the MCU
 #define INT_PIN           PB2
 #define BAUD_1200         0x01
 #define BAUD_2400         0x02
@@ -67,7 +69,8 @@ Breath and wake are configured as default 2seconds and 32ms respectively*/
 #define MODE_CENTRAL	  0x01
 #define MODE_NODE		  0x02
 #define EOD               0xFF
-
+#define BREATH            0x00
+#define EXPRESS           0x01
 
 /* ------------------------------Libraries------------------------------------------------------------*/
 
@@ -79,6 +82,7 @@ Breath and wake are configured as default 2seconds and 32ms respectively*/
 
 /* ------------------------------Functions-And-Globals------------------------------------------------------------*/
 
+void DRF_set(unsigned char);         //Set the operating mode 
 void DRF_read();                     //read the configurations of the module 
 void DRF_configure(unsigned char, unsigned char , unsigned char , unsigned char , unsigned char, unsigned char, unsigned char );  // node-Id , network-Id 
 void UART_transmit(unsigned char);
@@ -99,7 +103,7 @@ unsigned char* ptr2;
 unsigned char read = 0;                       //0 signifies that the data that is read is processed , 1 signifies to be processed
 unsigned char crc_string = 0xA7;
 unsigned char nodeidlsb,nodeidmsb,networkid,crc;  //The node and the network id , node ID is 2 bytes , network Id is 1 byte , central node doesn't have a node Id
-
+unsigned char operating_mode = BREATH;        //Breath and operating are the two modes available with us for the node module
 
 /* ------------------------------Main-Code------------------------------------------------------------*/
 
@@ -114,6 +118,7 @@ int main(void)
 	UART_init();
      
 	DRF_configure(BAUD_9600,PARITY_NONE,FREQ_866,MODE_NODE,nodeidmsb,nodeidlsb,networkid);
+	DRF_set(operating_mode);          //To operate in breath or in express ? , central always operates in express mode 
 	//This is the node mode's code 
 	//For testing request the central to send the data at periodic intervals 
 	//AUX pin connected to the specific INT pin of the processor 
@@ -131,6 +136,24 @@ int main(void)
 }
 /* ------------------------------User-Defined-Functions------------------------------------------------------------*/
 
+void DRF_set(unsigned char mode)
+{
+	//No question for standard mode (configuration mode ), enable has to be low and set has to be high 
+	//Set the mode , Breath or Express? , which communication to be carried out ? 
+	
+	DDRB = (1<<ENABLE)|(1<<SET);    //place these in the port initialization function once for all
+	
+	if(mode==BREATH)
+	{
+		//Set the module in breath communication mode 
+		PORTB = (1<<ENABLE)|(1<<SET); //breath communication , so both are high 
+	}
+	else
+	{
+		//Set the module in express communication mode 
+		PORTB &= ~((1<<ENABLE)|(1<<SET));  //set both to low 
+	}
+}
 void interrupt_init()
 {
 	//Initialize the interrupt
@@ -146,6 +169,11 @@ void interrupt_init()
 
 void DRF_configure(unsigned char baud, unsigned char parity, unsigned char freq, unsigned char mode, unsigned char nodeidmsb,unsigned char nodeidlsb, unsigned char networkid)
 {
+	DDRB = (1<<ENABLE)|(1<<SET);    //place these in the port initialization function once for all
+	
+	PORTB = (1<<SET);   //standard configuration mode set high , enable low 
+	PORTB &=~(1<<ENABLE);
+	
 	//Transmit the Default bytes along with calculating the CRC for the total payload before the CRC
 	unsigned char array[25];              //The array will store all the values of the data to be sent 
 	unsigned char sum=0; 
