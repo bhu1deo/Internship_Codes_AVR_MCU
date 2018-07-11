@@ -46,8 +46,8 @@ Breath and wake are configured as default 2-seconds and 32-ms respectively*/
 /*-------------------------------MACROS------------------------------------------------------------*/
 
 #define F_CPU			  11059200
-#define ENABLE            PB1
-#define SET               PB0
+#define ENABLE            PB1           //Central node : always express communication , or configured in standard mode
+#define SET               PB0           //In express both the SET and the EN should be made LOW , in standard : EN : LOW , SET : HIGH 
 #define AUX				  PB2 
 #define INT_PIN           PB2
 #define BAUD_1200         0x01
@@ -67,7 +67,8 @@ Breath and wake are configured as default 2-seconds and 32-ms respectively*/
 #define MODE_CENTRAL	  0x01
 #define MODE_NODE		  0x02
 #define EOD               0xFF
-
+#define BREATH            0x00
+#define EXPRESS           0x01
 
 /* ------------------------------Libraries------------------------------------------------------------*/
 
@@ -79,6 +80,7 @@ Breath and wake are configured as default 2-seconds and 32-ms respectively*/
 
 /* ------------------------------Functions-And-Globals------------------------------------------------------------*/
 
+void DRF_set(unsigned char);
 void DRF_read();                     //read the configurations of the module 
 void DRF_configure(unsigned char, unsigned char , unsigned char , unsigned char , unsigned char, unsigned char, unsigned char );  // node-Id , network-Id 
 void UART_transmit(unsigned char);
@@ -100,7 +102,7 @@ unsigned char* ptr;                   //To read the received data
 //Process the data in the ISR as soon as it is received and free the pointer
 unsigned char crc_string = 0xA7;          //The CRC generating string function
 unsigned char nodeidlsb,nodeidmsb,networkid;  //The node and the network id , node ID is 2 bytes , network Id is 1 byte , central node doesn't have a node Id
-
+unsigned char operating_mode = BREATH;
 
 /* ------------------------------Main-Code------------------------------------------------------------*/
 
@@ -114,11 +116,14 @@ int main(void)
 	interrupt_init();          //Initialize the external-interrupt
 	UART_init();
      
-	//DRF_configure(BAUD_9600,PARITY_NONE,FREQ_866,MODE_CENTRAL,nodeidmsb,nodeidlsb,networkid);
+	DRF_configure(BAUD_9600,PARITY_NONE,FREQ_866,MODE_CENTRAL,nodeidmsb,nodeidlsb,networkid);
+	DRF_set(EXPRESS);       //The central node always operates in EXPRESS communication 
 	//This is the node mode's code 
 	//For testing request the central to send the data at periodic intervals 
 	//AUX pin connected to the specific INT pin of the processor 
-		DDRC = (1<<PC6)|(1<<PC7);
+	
+	DDRC = (1<<PC6)|(1<<PC7);        //Only used for glowing LEDs , no need when final testing is done
+	
     while(1)
     {
         //data=UART_read();
@@ -132,6 +137,26 @@ int main(void)
     }
 }
 /* ------------------------------User-Defined-Functions------------------------------------------------------------*/
+
+
+void DRF_set(unsigned char mode)
+{
+	//No question for standard mode (configuration mode ), enable has to be low and set has to be high
+	//Set the mode , Breath or Express? , which communication to be carried out ?
+	
+	DDRB = (1<<ENABLE)|(1<<SET);    //place these in the port initialization function once for all
+	
+	if(mode==BREATH)
+	{
+		//Set the module in breath communication mode
+		PORTB = (1<<ENABLE)|(1<<SET); //breath communication , so both are high
+	}
+	else
+	{
+		//Set the module in express communication mode
+		PORTB &= ~((1<<ENABLE)|(1<<SET));  //set both to low
+	}
+}
 
 void interrupt_init()
 {
@@ -149,6 +174,11 @@ void interrupt_init()
 
 void DRF_configure(unsigned char baud, unsigned char parity, unsigned char freq, unsigned char mode, unsigned char nodeidmsb,unsigned char nodeidlsb, unsigned char networkid)
 {
+	DDRB = (1<<ENABLE)|(1<<SET);    //place these in the port initialization function once for all
+	
+	PORTB = (1<<SET);   //standard configuration mode set : high , enable : low
+	PORTB &=~(1<<ENABLE);
+	
 	//Transmit the Default bytes along with calculating the CRC for the total payload before the CRC
 	unsigned char array[25];              //The array will store all the values of the data to be sent 
 	unsigned char sum=0; 
